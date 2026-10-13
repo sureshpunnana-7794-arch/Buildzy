@@ -1,0 +1,6 @@
+{
+  "name": "BUILDZY - AI Construction Marketplace",
+  "description": "Zomato-style marketplace and planning platform for home construction, verified builders, materials procurement, and AI project tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
