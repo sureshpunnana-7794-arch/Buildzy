@@ -132,7 +132,7 @@ export default function App() {
       // Tab matching
       if (activeTab === 'delivery') {
         if (item.type !== 'materials' && item.type !== 'soil_lab' && selectedCategory === 'all' && !searchQuery) {
-          // Keep prioritization
+          return false;
         }
       } else if (activeTab === 'dining') {
         if (item.type !== 'builder' && item.type !== 'architect' && selectedCategory === 'all' && !searchQuery) {
@@ -142,13 +142,25 @@ export default function App() {
 
       // Category filter
       if (selectedCategory !== 'all') {
-        if (selectedCategory === 'cement' && !item.cuisineTag.toLowerCase().includes('cement') && item.type !== 'materials') return false;
-        if (selectedCategory === 'steel' && !item.cuisineTag.toLowerCase().includes('steel')) return false;
-        if (selectedCategory === 'soil_lab' && item.type !== 'soil_lab') return false;
-        if (selectedCategory === 'builder' && item.type !== 'builder') return false;
-        if (selectedCategory === 'architect' && item.type !== 'architect') return false;
-        if (selectedCategory === 'bricks' && !item.cuisineTag.toLowerCase().includes('brick') && !item.cuisineTag.toLowerCase().includes('materials')) return false;
-        if (selectedCategory === 'sanitary' && !item.cuisineTag.toLowerCase().includes('sanitary') && !item.cuisineTag.toLowerCase().includes('rmc')) return false;
+        if (selectedCategory === 'cement') {
+          const isCement = item.cuisineTag.toLowerCase().includes('cement') || item.catalog.some(c => c.category.toLowerCase().includes('cement') || c.name.toLowerCase().includes('cement'));
+          if (!isCement) return false;
+        } else if (selectedCategory === 'steel') {
+          const isSteel = item.cuisineTag.toLowerCase().includes('steel') || item.catalog.some(c => c.category.toLowerCase().includes('steel') || c.name.toLowerCase().includes('steel') || c.name.toLowerCase().includes('rebar'));
+          if (!isSteel) return false;
+        } else if (selectedCategory === 'soil_lab') {
+          if (item.type !== 'soil_lab') return false;
+        } else if (selectedCategory === 'builder') {
+          if (item.type !== 'builder') return false;
+        } else if (selectedCategory === 'architect') {
+          if (item.type !== 'architect') return false;
+        } else if (selectedCategory === 'bricks') {
+          const isBricks = item.cuisineTag.toLowerCase().includes('brick') || item.cuisineTag.toLowerCase().includes('aac') || item.catalog.some(c => c.name.toLowerCase().includes('brick') || c.name.toLowerCase().includes('aac') || c.category.toLowerCase().includes('brick'));
+          if (!isBricks) return false;
+        } else if (selectedCategory === 'sanitary') {
+          const isSanitary = item.cuisineTag.toLowerCase().includes('sanitary') || item.cuisineTag.toLowerCase().includes('rmc') || item.cuisineTag.toLowerCase().includes('plumbing') || item.catalog.some(c => c.category.toLowerCase().includes('plumbing') || c.category.toLowerCase().includes('sanitary') || c.category.toLowerCase().includes('concrete'));
+          if (!isSanitary) return false;
+        }
       }
 
       // Search Query
@@ -157,7 +169,7 @@ export default function App() {
         const matchesName = item.name.toLowerCase().includes(q);
         const matchesTag = item.cuisineTag.toLowerCase().includes(q);
         const matchesLoc = item.locality.toLowerCase().includes(q) || item.city.toLowerCase().includes(q);
-        const matchesCatalog = item.catalog.some((c) => c.name.toLowerCase().includes(q));
+        const matchesCatalog = item.catalog.some((c) => c.name.toLowerCase().includes(q) || c.category.toLowerCase().includes(q));
         if (!matchesName && !matchesTag && !matchesLoc && !matchesCatalog) {
           return false;
         }
@@ -177,12 +189,19 @@ export default function App() {
 
       return true;
     }).sort((a, b) => {
+      // Prioritize selected city
+      const aInCity = a.city === selectedLocation.city ? 1 : 0;
+      const bInCity = b.city === selectedLocation.city ? 1 : 0;
+      if (aInCity !== bInCity) {
+        return bInCity - aInCity;
+      }
+
       if (sortBy === 'rating') return b.rating - a.rating;
       if (sortBy === 'price_low') return a.priceNumeric - b.priceNumeric;
       if (sortBy === 'speed') return a.deliveryTime.localeCompare(b.deliveryTime);
-      return 0; // relevance
+      return b.rating - a.rating; // relevance
     });
-  }, [activeTab, selectedCategory, searchQuery, ratingFilter, reraOnly, fastDispatchOnly, budgetFriendlyOnly, sortBy]);
+  }, [activeTab, selectedCategory, searchQuery, ratingFilter, reraOnly, fastDispatchOnly, budgetFriendlyOnly, sortBy, selectedLocation.city]);
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-stone-900 flex flex-col font-sans selection:bg-rose-100 selection:text-rose-900">
@@ -198,6 +217,10 @@ export default function App() {
         currentLanguage={currentLanguage}
         onLanguageChange={setCurrentLanguage}
         t={t}
+        onSelectListingFromSearch={(listingId) => {
+          const item = LISTINGS.find((l) => l.id === listingId);
+          if (item) setSelectedListing(item);
+        }}
       />
 
       {/* 2. ZOMATO 4 MAIN SERVICE TABS */}
@@ -256,7 +279,7 @@ export default function App() {
       {/* VIEW B: LIVE CONSTRUCTION TRACKER */}
       {activeTab === 'tracking' && (
         <main className="flex-1">
-          <LiveProjectTracker t={t} />
+          <LiveProjectTracker t={t} customOrderId={lastPlacedOrderId} />
         </main>
       )}
 
@@ -327,15 +350,36 @@ export default function App() {
           {/* Quick Categories Carousel (Zomato-style circles) */}
           <CategoryCarousel
             selectedCategory={selectedCategory}
-            onSelectCategory={setSelectedCategory}
+            onSelectCategory={(catId) => {
+              setSelectedCategory(catId);
+              if (catId === 'builder' || catId === 'architect') {
+                setActiveTab('dining');
+              } else if (catId === 'cement' || catId === 'steel' || catId === 'soil_lab' || catId === 'bricks' || catId === 'sanitary') {
+                setActiveTab('delivery');
+              }
+              const sec = document.getElementById('listings-section');
+              if (sec) sec.scrollIntoView({ behavior: 'smooth' });
+            }}
             t={t}
           />
 
           {/* Curated Collections in Selected City */}
           <CuratedCollections
             onSelectCollection={(tag) => {
-              setSelectedCategory(tag);
-              window.scrollTo({ top: 580, behavior: 'smooth' });
+              if (tag === 'builder' || tag === 'architect') {
+                setActiveTab('dining');
+                setSelectedCategory(tag);
+              } else {
+                setActiveTab('delivery');
+                setSelectedCategory(tag === 'materials' ? 'all' : tag);
+              }
+              const sec = document.getElementById('listings-section');
+              if (sec) sec.scrollIntoView({ behavior: 'smooth' });
+            }}
+            onExploreAll={() => {
+              setSelectedCategory('all');
+              const sec = document.getElementById('listings-section');
+              if (sec) sec.scrollIntoView({ behavior: 'smooth' });
             }}
             selectedCity={selectedLocation.city}
             t={t}
@@ -360,7 +404,7 @@ export default function App() {
           />
 
           {/* Main Listings Grid (Zomato Restaurant Card layout) */}
-          <section className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          <section id="listings-section" className="max-w-7xl mx-auto px-4 sm:px-6 py-8 scroll-mt-24">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-900 font-serif">
